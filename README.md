@@ -12,7 +12,7 @@ The repository includes:
  
  Each file contains methods for:
 
-  -Adjusting models for an fish species
+  -Adjusting models for a fish species
 
  -Fitting models individually for males and females and indicating if estimated L50 were different considering sexes
 
