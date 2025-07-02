@@ -1,0 +1,220 @@
+---
+title: "Length at first maturity of 43 freshwater fish species caught by professional fishers in the Itaipu Reservoir, Paraná River Basin, Brazil"
+author: "Éder André Gubiani, Anderson Luís Maciel, Geuza Cantanhêde, Luiz Guilherme dos Santos Ribas, Pitágoras Augusto Piana, Suelen Zontta Kiem, and Caroline Henn"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    df_print: paged
+    code_folding: none
+  word_document:
+    toc: true
+    number_sections: true
+  pdf_document:
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Summary
+
+This R Markdown guide describes the full workflow to estimate the length at first maturity (L50 and L99) of freshwater fish species. The pipeline includes:
+
+- Data import and filtering by sex and maturity stage  
+- Logistic model fitting using bootstrapping  
+- Extraction of L50 and L99 from the ogive curve  
+- Saving plots and result tables to the Desktop  
+- Evaluation of sexual dimorphism based on confidence interval overlap
+
+The `sizeMat::gonad_mature()` function is used with the "fq" method and 999 bootstrapped iterations to estimate the ogive.
+
+**Note**: This script saves plots and outputs to your Desktop directory on Windows. Adjust the `desktop_path` if using macOS or Linux.
+
+# Load Required Packages
+
+```{r load-packages}
+# Check and install required packages if missing
+packages <- c("readxl", "sizeMat", "writexl","dplyr")
+installed <- packages %in% rownames(installed.packages())
+if (any(!installed)) install.packages(packages[!installed])
+
+# Load required libraries
+library(readxl)
+library(sizeMat)
+library(writexl)
+library(dplyr)
+```
+
+# Download Data to Desktop and Load
+
+Here we define where the data will be downloaded (in this case, your Desktop), download the dataset from the GitHub repository if it's not already present, and read it into R while removing any rows with missing values.
+
+```{r load-data}
+# Define the download destination (Desktop)
+desktop_path <- file.path(Sys.getenv("USERPROFILE"), "Desktop")
+local_file <- file.path(desktop_path, "geophagus_sveni.xlsx")
+
+# URL direto para o conteúdo bruto do GitHub (raw)
+github_file_url <- "https://raw.githubusercontent.com/ICTES-UNIOESTE/Length-at-first-maturity-of-freshwater-fish-from-Itaipu-Reservoir/main/geophagus_sveni.xlsx"
+
+# Baixar o arquivo se não estiver presente no computador
+if (!file.exists(local_file)) {
+  download.file(url = github_file_url, destfile = local_file, mode = "wb")
+}
+
+# Carregar e limpar os dados
+Data <- readxl::read_xlsx(local_file) %>% na.omit()
+```
+
+# Early adjustments 
+
+```{r Early adjustments}
+# Species name
+Species <- "Geophagus sveni"
+
+# Defining stages
+Stage <- c("ESG", "IMT", "MAT", "REG", "REP", "RPD", "SES")
+```
+
+# Fit Logistic Model for Both Sexes
+
+```{r model-both}
+# Fit logistic model using all individuals regardless of sex
+my_ogive_fq <- gonad_mature(Data, varNames = c("TL", "Stage"), inmName = "IMT",
+                            matName = levels(factor(Stage[Stage = "IMT"])), method = "fq", niter = 999)
+
+# Estimate LC99 (length where 99% of individuals are mature)
+LC99 <- -(median(my_ogive_fq$A_boot) + log(0.01 / 0.999999999999999999)) / median(my_ogive_fq$B_boot)
+
+# Count total individuals
+n.both <- nrow(Data)
+```
+
+# Plot Both Sexes
+
+```{r plot-both}
+# Plot maturity ogive for both sexes
+# Save as TIFF on desktop
+tiff(filename = file.path(desktop_path, paste0(Species, "_BothSexes.tiff")), width = 5*480, height = 5*480, res = 300)
+par(mfrow = c(1,1), oma = c(1,1,1,1))
+plot(my_ogive_fq, xlab = "Length (mm.)", ylab = "Proportion mature", col = c("blue", "red"), onlyOgive = TRUE)
+text(LC99, 0.05, bquote(L[99] == .(round(LC99,1))), pos = 2)
+points(LC99, 1, col = "red", pch = 19, cex = 1.5)
+abline(h = 1, lty = 2, col = "red", lwd = 1.5)
+segments(x0 = LC99, y0 = -0.5, x1 = LC99, y1 = 1, lty = 2, col = "red", lwd = 1.5)
+dev.off()
+```
+
+# Female-Only Model
+
+```{r model-female}
+# Subset and analyze female data only
+DataF <- Data[Data$Sex == "F",]
+my_ogive_F <- gonad_mature(DataF, varNames = c("TL", "Stage"), inmName = "IMT",
+                           matName = levels(factor(DataF$Stage[DataF$Stage != "IMT"])), method = "fq", niter = 999)
+
+# Estimate LC99 for females
+LC99_F <- -(median(my_ogive_F$A_boot) + log(0.01 / 0.99)) / median(my_ogive_F$B_boot)
+n.Female <- nrow(DataF)
+```
+
+# Plot Female-Only Model
+
+```{r plot-female}
+# Plot maturity ogive for females
+# Save as TIFF on desktop
+tiff(filename = file.path(desktop_path, paste0(Species, "_Female.tiff")), width = 5*480, height = 5*480, res = 300)
+par(mfrow = c(1,1), oma = c(1,1,1,1))
+plot(my_ogive_F, xlab = "Length (mm.)", ylab = "Proportion mature", col = c("blue", "red"), onlyOgive = TRUE)
+points(LC99_F, 1, col = "red", pch = 19, cex = 1.5)
+abline(h = 1, lty = 2, col = "red", lwd = 1)
+segments(x0 = LC99_F, y0 = -0.5, x1 = LC99_F, y1 = 1, lty = 2, col = "red", lwd = 1)
+dev.off()
+```
+
+# Male-Only Model
+
+```{r model-male}
+# Subset and analyze male data only
+DataM <- Data[Data$Sex == "M",]
+my_ogive_M <- gonad_mature(DataM, varNames = c("TL", "Stage"), inmName = "IMT",
+                           matName = levels(factor(DataM$Stage[DataM$Stage != "IMT"])), method = "fq", niter = 999)
+
+# Estimate LC99 for males
+LC99_M <- -(median(my_ogive_M$A_boot) + log(0.01 / 0.99)) / median(my_ogive_M$B_boot)
+n.Male <- nrow(DataM)
+```
+
+# Plot Male-Only Model
+
+```{r plot-male}
+# Plot maturity ogive for males
+# Save as TIFF on desktop
+tiff(filename = file.path(desktop_path, paste0(Species, "_Male.tiff")), width = 5*480, height = 5*480, res = 300)
+par(mfrow = c(1,1), oma = c(1,1,1,1))
+plot(my_ogive_M, xlab = "Length (mm.)", ylab = "Proportion mature", col = c("blue", "red"), onlyOgive = TRUE)
+points(LC99_M, 1, col = "red", pch = 19, cex = 1.5)
+abline(h = 1, lty = 2, col = "red", lwd = 1)
+segments(x0 = LC99_M, y0 = -0.5, x1 = LC99_M, y1 = 1, lty = 2, col = "red", lwd = 1)
+dev.off()
+```
+
+# Overlap Test Between Confidence Intervals
+
+```{r overlap-test}
+# Estimate L50 confidence intervals from bootstrap samples
+L50_Male_CI <- quantile(-my_ogive_M$A_boot / my_ogive_M$B_boot, probs = c(0.025, 0.975), na.rm = TRUE)
+L50_Female_CI <- quantile(-my_ogive_F$A_boot / my_ogive_F$B_boot, probs = c(0.025, 0.975), na.rm = TRUE)
+
+# Calculate mean L50 for each sex
+L50_Male_Mean <- mean(-my_ogive_M$A_boot / my_ogive_M$B_boot, na.rm = TRUE)
+L50_Female_Mean <- mean(-my_ogive_F$A_boot / my_ogive_F$B_boot, na.rm = TRUE)
+
+# Determine overlap in confidence intervals
+overlap_test <- if (L50_Female_Mean >= L50_Male_Mean) {
+  ifelse(min(L50_Female_CI) > max(L50_Male_CI), "different", "not different")
+} else {
+  ifelse(min(L50_Male_CI) > max(L50_Female_CI), "different", "not different")
+}
+
+# Combine and export results to Excel
+overlap_results <- data.frame(
+  Sex = c("Male", "Female"),
+  L50_Lower = c(L50_Male_CI[1], L50_Female_CI[1]),
+  L50_Upper = c(L50_Male_CI[2], L50_Female_CI[2]),
+  L50_Mean = c(L50_Male_Mean, L50_Female_Mean)
+)
+
+write_xlsx(list(
+  Confidence_Intervals = overlap_results,
+  Decision = data.frame(Result = overlap_test)
+), path = file.path(desktop_path, paste0(Species, "_L50_Overlap_Test.xlsx")))
+```
+
+# Glossary
+
+- **Ogive**: A curve representing the proportion of mature individuals across size classes.
+- **L50**: Length at which 50% of individuals are mature.
+- **L99**: Estimated length at which ~99% of individuals are mature.
+- **Bootstrap**: A resampling method to estimate confidence intervals.
+- **Sexual Dimorphism**: Differences in biological traits (e.g., length at maturity) between males and females.
+
+# FAQ
+
+**Q1: What maturity stages are used in the model?**  
+A1: The model includes stages like ESG, IMT, MAT, REG, REP, RPD, and SES. The stage "IMT" is used to separate immature from mature individuals.
+
+**Q2: How many iterations are used in bootstrapping?**  
+A2: We use 999 iterations to ensure robust confidence interval estimation.
+
+**Q3: Where are the plots and outputs saved?**  
+A3: By default, files are saved to your Windows Desktop. Adjust `desktop_path` if using a different system.
+
+**Q4: How is sexual dimorphism tested?**  
+A4: By checking for overlap in the 95% confidence intervals of the L50 or L99 values between sexes.
