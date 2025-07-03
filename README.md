@@ -20,6 +20,6 @@ The repository includes:
 
 ⚠️ Note: The scripts are set to save results to the user’s Desktop on Windows. If you are using macOS or Linux, you’ll need to adjust the desktop_path accordingly.
 
-The purpose of this repository is to promote reproducibility and offer a learning resource for fisheries biologists and quantitative ecologists working with morphometric relationships in fish populations.
+The purpose of this repository is to promote reproducibility and offer a learning resource for fisheries biologists and quantitative ecologists working with fish populations.
 
 We recommend downloading the .Rmd and .html files for optimal visualization.
